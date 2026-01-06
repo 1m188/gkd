@@ -1,0 +1,70 @@
+name: Go
+
+# 一些全局变量，可以在工作流中引用
+env:
+  APP_NAME: gkd
+  GO_VERSION: '1.25.0'
+
+# 在发布 Release 版本时触发
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            output_name: ${{ env.APP_NAME }}-linux-x64
+          - os: windows
+            arch: amd64
+            output_name: ${{ env.APP_NAME }}-windows-x64.exe
+          - os: darwin
+            arch: amd64
+            output_name: ${{ env.APP_NAME }}-macos-x64
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+    # 签出
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # 设置 golang 版本
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    # 下载依赖
+    - name: Download dependencies
+      run: go mod download
+
+    # 构建二进制文件
+    - name: Build for ${{ matrix.os }}-${{ matrix.arch }}
+      run: go build -ldflags="-s -w" -o ${{ matrix.output_name }} -v .
+      env:
+        GOOS: ${{ matrix.os }}
+        GOARCH: ${{ matrix.arch }}
+        CGO_ENABLED: 0
+
+    # 上传附件
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.output_name }}
+        path: ${{ matrix.output_name }}
+
+    # 发布release版本
+    - name: Release version
+      uses: ncipollo/release-action@v1
+      if: github.event_name == 'release'
+      with:
+        allowUpdates: true
+        artifacts: ${{ matrix.output_name }}
+        token: ${{ secrets.GITHUB_TOKEN }}
