@@ -8,6 +8,91 @@ import (
 	"os"
 )
 
+// 负载格式魔数，用于标识这是 gkd 工具写入的数据
+const payloadMagic = 0x01
+
+// HiddenPayload 表示从图片中解出的隐藏负载信息。
+type HiddenPayload struct {
+	IsFile  bool   // true 表示文件，false 表示文本
+	Ext     string // 文件扩展名（不含点），文本时为空
+	Content []byte // 原始内容数据
+}
+
+// BuildPayload 根据类型、扩展名和原始内容构建待隐藏的二进制负载。
+//
+// 负载格式（所有字段均为大端序）：
+//
+//	字节 0:     魔数 (0x01)
+//	字节 1:     类型标记 (0=文本, 1=文件)
+//	字节 2-3:   扩展名长度（16位无符号整数）
+//	字节 4-...: 扩展名字符串（UTF-8）
+//	后续字节:   原始内容数据
+func BuildPayload(isFile bool, ext string, content []byte) []byte {
+	extBytes := []byte(ext)
+	extLen := uint16(len(extBytes))
+
+	// 总长度: 魔数(1) + 类型(1) + 扩展名长度(2) + 扩展名 + 内容
+	totalLen := 1 + 1 + 2 + len(extBytes) + len(content)
+	payload := make([]byte, totalLen)
+
+	// 魔数
+	payload[0] = payloadMagic
+
+	// 类型标记
+	if isFile {
+		payload[1] = 1
+	} else {
+		payload[1] = 0
+	}
+
+	// 扩展名长度
+	binary.BigEndian.PutUint16(payload[2:4], extLen)
+
+	// 扩展名
+	copy(payload[4:4+extLen], extBytes)
+
+	// 原始内容
+	copy(payload[4+extLen:], content)
+
+	return payload
+}
+
+// ParsePayload 从二进制数据中解析出隐藏负载。
+// 返回 HiddenPayload 结构体，包含类型、扩展名和原始内容。
+func ParsePayload(data []byte) (*HiddenPayload, error) {
+	if len(data) < 4 {
+		return nil, fmt.Errorf("负载数据太短，无法解析")
+	}
+
+	// 验证魔数
+	if data[0] != payloadMagic {
+		return nil, fmt.Errorf("无效的负载魔数: 期望 0x%02X，实际 0x%02X", payloadMagic, data[0])
+	}
+
+	// 类型标记
+	isFile := data[1] == 1
+
+	// 扩展名长度
+	extLen := binary.BigEndian.Uint16(data[2:4])
+
+	// 边界检查
+	if 4+int(extLen) > len(data) {
+		return nil, fmt.Errorf("负载数据不完整：扩展名长度 %d 超出数据范围", extLen)
+	}
+
+	// 扩展名
+	ext := string(data[4 : 4+extLen])
+
+	// 原始内容
+	content := data[4+extLen:]
+
+	return &HiddenPayload{
+		IsFile:  isFile,
+		Ext:     ext,
+		Content: content,
+	}, nil
+}
+
 // detectImageFormat 检测图片文件的格式类型。
 // 通过读取文件头部的魔数来判断是 PNG 还是 JPEG 格式。
 func detectImageFormat(raw []byte) (string, error) {
@@ -128,7 +213,7 @@ func encodeJPEG(raw []byte, data []byte) []byte {
 //
 // 参数:
 //   - imagePath: 目标图片文件的路径
-//   - data: 待隐藏的数据字节序列
+//   - data: 待隐藏的数据字节序列（通常由 BuildPayload 生成）
 //   - outputPath: 输出图片文件的路径
 //
 // 返回值:

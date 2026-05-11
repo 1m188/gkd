@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 func main() {
@@ -30,23 +32,22 @@ func printUsage() {
 	fmt.Println("gkd - 隐藏文件或信息到图片中")
 	fmt.Println()
 	fmt.Println("用法:")
-	fmt.Println("  gkd hide  -i <图片路径> -f <文件路径> [-o <输出路径>]   将文件隐藏到图片中")
-	fmt.Println("  gkd hide  -i <图片路径> -t <文本内容> [-o <输出路径>]   将文本隐藏到图片中")
-	fmt.Println("  gkd decode -i <图片路径>                                从图片中提取隐藏信息")
-	fmt.Println("  gkd help                                                显示此帮助信息")
+	fmt.Println("  gkd hide   -i <图片路径> -c <文件路径/文本内容> [-o <输出路径>]")
+	fmt.Println("  gkd decode -i <图片路径> [-o <输出路径>]")
+	fmt.Println("  gkd help")
 	fmt.Println()
 	fmt.Println("选项:")
 	fmt.Println("  -i    目标图片路径（必需）")
-	fmt.Println("  -f    待隐藏的文件路径（与 -t 二选一）")
-	fmt.Println("  -t    待隐藏的文本内容（与 -f 二选一）")
-	fmt.Println("  -o    输出图片路径（可选，默认为 output.png）")
+	fmt.Println("  -c    待隐藏的文件路径或文本内容（必需）")
+	fmt.Println("  -o    输出路径（可选）")
+	fmt.Println("           hide 默认输出: output.png")
+	fmt.Println("           decode 默认输出: output.txt（文本）或 output.<扩展名>（文件）")
 }
 
 func handleHide(args []string) {
 	hideFlags := flag.NewFlagSet("hide", flag.ExitOnError)
 	imagePath := hideFlags.String("i", "", "目标图片路径（必需）")
-	filePath := hideFlags.String("f", "", "待隐藏的文件路径")
-	textContent := hideFlags.String("t", "", "待隐藏的文本内容")
+	content := hideFlags.String("c", "", "待隐藏的文件路径或文本内容（必需）")
 	outputPath := hideFlags.String("o", "output.png", "输出图片路径")
 
 	hideFlags.Parse(args)
@@ -56,34 +57,33 @@ func handleHide(args []string) {
 		fmt.Fprintln(os.Stderr, "错误: 必须指定图片路径 (-i)")
 		os.Exit(1)
 	}
-
-	if *filePath == "" && *textContent == "" {
-		fmt.Fprintln(os.Stderr, "错误: 必须指定待隐藏的文件路径 (-f) 或文本内容 (-t)")
+	if *content == "" {
+		fmt.Fprintln(os.Stderr, "错误: 必须指定待隐藏的内容 (-c)")
 		os.Exit(1)
 	}
 
-	if *filePath != "" && *textContent != "" {
-		fmt.Fprintln(os.Stderr, "错误: -f 和 -t 不能同时指定")
-		os.Exit(1)
-	}
-
-	// 读取待隐藏数据
-	var data []byte
-	if *filePath != "" {
-		var err error
-		data, err = os.ReadFile(*filePath)
+	// 判断 -c 是文件路径还是文本内容
+	var payload []byte
+	info, err := os.Stat(*content)
+	if err == nil && !info.IsDir() {
+		// 文件存在且不是目录，按文件处理
+		rawData, err := os.ReadFile(*content)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "错误: 无法读取文件 %s: %v\n", *filePath, err)
+			fmt.Fprintf(os.Stderr, "错误: 无法读取文件 %s: %v\n", *content, err)
 			os.Exit(1)
 		}
-		fmt.Printf("已读取文件: %s (%d 字节)\n", *filePath, len(data))
+		// 提取文件扩展名（不含点）
+		ext := strings.TrimPrefix(filepath.Ext(*content), ".")
+		payload = BuildPayload(true, ext, rawData)
+		fmt.Printf("已读取文件: %s (%d 字节, 类型: %s)\n", *content, len(rawData), ext)
 	} else {
-		data = []byte(*textContent)
-		fmt.Printf("已获取文本内容 (%d 字节)\n", len(data))
+		// 文件不存在，按文本处理
+		payload = BuildPayload(false, "", []byte(*content))
+		fmt.Printf("已获取文本内容 (%d 字节)\n", len(*content))
 	}
 
 	// 调用隐藏函数
-	err := HideDataInImage(*imagePath, data, *outputPath)
+	err = HideDataInImage(*imagePath, payload, *outputPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "错误: 隐藏数据失败: %v\n", err)
 		os.Exit(1)
@@ -95,6 +95,7 @@ func handleHide(args []string) {
 func handleDecode(args []string) {
 	decodeFlags := flag.NewFlagSet("decode", flag.ExitOnError)
 	imagePath := decodeFlags.String("i", "", "目标图片路径（必需）")
+	outputPath := decodeFlags.String("o", "", "输出文件路径（可选）")
 
 	decodeFlags.Parse(args)
 
@@ -105,14 +106,32 @@ func handleDecode(args []string) {
 	}
 
 	// 调用解码函数
-	data, err := ExtractDataFromImage(*imagePath)
+	payload, err := ExtractDataFromImage(*imagePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "错误: 提取数据失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("成功! 从图片中提取了 %d 字节数据\n", len(data))
-	fmt.Println("提取的数据:")
-	os.Stdout.Write(data)
-	fmt.Println()
+	// 确定输出路径
+	outPath := *outputPath
+	if outPath == "" {
+		if payload.IsFile {
+			outPath = "output." + payload.Ext
+		} else {
+			outPath = "output.txt"
+		}
+	}
+
+	// 写入内容到输出文件
+	if err := os.WriteFile(outPath, payload.Content, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "错误: 写入输出文件失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	if payload.IsFile {
+		fmt.Printf("成功! 从图片中提取了文件 (%d 字节, 类型: %s)\n", len(payload.Content), payload.Ext)
+	} else {
+		fmt.Printf("成功! 从图片中提取了文本内容 (%d 字节)\n", len(payload.Content))
+	}
+	fmt.Printf("内容已写入: %s\n", outPath)
 }

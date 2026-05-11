@@ -98,7 +98,7 @@ func decodeJPEG(raw []byte) ([]byte, error) {
 			continue
 		}
 
-		// 检查是否是 APP1 标记 (0xE1) 并且段足够大
+		// 检查段是否足够大
 		if pos+2+int(segLen) > len(raw) {
 			break
 		}
@@ -131,13 +131,16 @@ func decodeJPEG(raw []byte) ([]byte, error) {
 //   - PNG: 从关键字为 "gkd" 的 tEXt 注释块中提取并 Base64 解码
 //   - JPEG: 从标识为 "gkd" 的 APP1 应用数据段中提取并 Base64 解码
 //
+// 提取出的原始数据会通过 ParsePayload 解析为 HiddenPayload 结构体，
+// 其中包含隐藏内容的类型（文本/文件）、扩展名和原始数据。
+//
 // 参数:
 //   - imagePath: 包含隐藏数据的图片文件路径
 //
 // 返回值:
-//   - []byte: 提取出的隐藏数据字节序列
+//   - *HiddenPayload: 解析后的隐藏负载信息
 //   - error: 如果提取过程中发生错误则返回错误信息，否则返回 nil
-func ExtractDataFromImage(imagePath string) ([]byte, error) {
+func ExtractDataFromImage(imagePath string) (*HiddenPayload, error) {
 	// 读取图片文件
 	raw, err := os.ReadFile(imagePath)
 	if err != nil {
@@ -150,13 +153,28 @@ func ExtractDataFromImage(imagePath string) ([]byte, error) {
 		return nil, err
 	}
 
-	// 根据格式调用对应的解码函数
+	// 根据格式调用对应的解码函数，获取原始数据
+	var decodedData []byte
 	switch format {
 	case "png":
-		return decodePNG(raw)
+		decodedData, err = decodePNG(raw)
+		if err != nil {
+			return nil, err
+		}
 	case "jpeg":
-		return decodeJPEG(raw)
+		decodedData, err = decodeJPEG(raw)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("不支持的图片格式: %s", format)
 	}
+
+	// 解析负载
+	payload, err := ParsePayload(decodedData)
+	if err != nil {
+		return nil, fmt.Errorf("解析负载失败: %w", err)
+	}
+
+	return payload, nil
 }
