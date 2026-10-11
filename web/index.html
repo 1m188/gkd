@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>gkd · 图片隐写工具</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <h1>🛡️ gkd · 图片隐写</h1>
+      <p class="subtitle">
+        把文件或文字藏进 PNG / JPEG 的元数据中，随时原样取回。
+        不改动像素、不压缩画质，与 gkd 命令行工具完全互操作。
+      </p>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="功能切换">
+      <button id="tab-hide" class="tab active" role="tab" aria-selected="true"
+              aria-controls="panel-hide" type="button">隐藏内容</button>
+      <button id="tab-extract" class="tab" role="tab" aria-selected="false"
+              aria-controls="panel-extract" type="button">提取内容</button>
+    </nav>
+
+    <!-- ==================== 隐藏内容 ==================== -->
+    <section id="panel-hide" class="panel" role="tabpanel" aria-label="隐藏内容">
+      <div class="card">
+        <h2>① 选择一张图片作为载体</h2>
+        <div id="hide-drop" class="dropzone" tabindex="0" role="button"
+             aria-label="选择载体图片">
+          <p class="dz-main">点击选择，或把 PNG / JPEG 图片拖到这里</p>
+          <p class="dz-sub">图片不会被压缩或重编码，只追加元数据</p>
+        </div>
+        <input type="file" id="hide-image-input" accept="image/png,image/jpeg" hidden>
+
+        <div id="hide-image-preview" class="preview hidden">
+          <img id="hide-preview-img" alt="载体图片预览">
+          <div class="preview-info">
+            <div id="hide-image-name" class="file-name"></div>
+            <div id="hide-image-meta" class="file-meta"></div>
+            <div id="hide-image-badge" class="badge hidden">
+              ⚠ 该图片已包含 gkd 隐藏数据，继续隐藏会叠加（解码时读取最早一份）
+            </div>
+            <div>
+              <button id="hide-image-clear" class="ghost small" type="button">移除图片</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>② 选择要隐藏的内容</h2>
+        <div class="seg" role="radiogroup" aria-label="内容类型">
+          <button id="mode-text" class="seg-btn active" type="button" aria-pressed="true">隐藏文本</button>
+          <button id="mode-file" class="seg-btn" type="button" aria-pressed="false">隐藏文件</button>
+        </div>
+
+        <div id="text-block">
+          <label class="field-label" for="hide-text">文本内容（按 UTF-8 编码后隐藏）</label>
+          <textarea id="hide-text" rows="6" placeholder="输入要藏进图片的文字……"></textarea>
+          <div class="hint" id="text-size">0 字节</div>
+        </div>
+
+        <div id="file-block" class="hidden">
+          <div id="file-drop" class="dropzone compact" tabindex="0" role="button"
+               aria-label="选择要隐藏的文件">
+            <p class="dz-main">点击选择，或把要隐藏的文件拖到这里（任意类型）</p>
+          </div>
+          <input type="file" id="hide-file-input" hidden>
+
+          <div id="file-info" class="file-chip hidden">
+            <span id="file-chip-name" class="file-name"></span>
+            <span id="file-chip-size" class="file-meta"></span>
+            <button id="file-clear" class="ghost small" type="button">移除</button>
+          </div>
+          <div class="hint">隐写格式只记录文件的扩展名，不记录原文件名</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>③ 生成</h2>
+        <button id="btn-hide" class="primary" type="button">隐藏内容并生成图片</button>
+        <div class="hint" id="hide-hint"></div>
+        <div id="hide-status" class="status" role="status" aria-live="polite"></div>
+
+        <div id="hide-result" class="result hidden">
+          <img id="hide-result-img" alt="输出图片预览">
+          <div class="result-info">
+            <div class="file-name" id="hide-result-name"></div>
+            <div class="file-meta" id="hide-result-meta"></div>
+            <div class="actions">
+              <a id="hide-download" class="primary download" download>下载图片</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 提取内容 ==================== -->
+    <section id="panel-extract" class="panel" role="tabpanel" aria-label="提取内容" hidden>
+      <div class="card">
+        <h2>① 选择含有隐藏数据的图片</h2>
+        <div id="extract-drop" class="dropzone" tabindex="0" role="button"
+             aria-label="选择待提取图片">
+          <p class="dz-main">点击选择，或把图片拖到这里</p>
+          <p class="dz-sub">支持由 gkd 工具（网页版或命令行）处理过的 PNG / JPEG</p>
+        </div>
+        <input type="file" id="extract-image-input" accept="image/png,image/jpeg" hidden>
+
+        <div id="extract-image-preview" class="preview hidden">
+          <img id="extract-preview-img" alt="待提取图片预览">
+          <div class="preview-info">
+            <div id="extract-image-name" class="file-name"></div>
+            <div id="extract-image-meta" class="file-meta"></div>
+            <div>
+              <button id="extract-image-clear" class="ghost small" type="button">移除图片</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>② 提取结果</h2>
+        <button id="btn-extract" class="primary" type="button">提取隐藏内容</button>
+        <div id="extract-status" class="status" role="status" aria-live="polite"></div>
+
+        <div id="extract-result" class="hidden">
+          <div class="result-head">
+            <span class="badge type">隐藏内容：<b id="extract-type-badge"></b></span>
+            <span id="extract-meta" class="file-meta"></span>
+          </div>
+
+          <div id="extract-text-block" class="hidden">
+            <label class="field-label" for="extract-text">恢复出的文本内容</label>
+            <textarea id="extract-text" rows="8" readonly></textarea>
+            <div class="actions">
+              <button id="btn-copy" class="ghost" type="button">复制文本</button>
+              <a id="extract-text-download" class="ghost download" download="output.txt">下载为 .txt</a>
+            </div>
+          </div>
+
+          <div id="extract-file-block" class="hidden">
+            <div class="actions">
+              <a id="extract-file-download" class="primary download" download>下载文件</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>
+        原理：数据经 Base64 编码后写入 PNG 的 <code>tEXt</code> 块 / JPEG 的
+        <code>APP1</code> 段（关键字 <code>gkd</code>），与 gkd 命令行工具
+        （<code>gkd hide</code> / <code>gkd decode</code>）完全互操作。
+      </p>
+      <p>
+        注意：这只是「藏」，不是「加密」——懂行的人同样能提取；图片若被社交平台转码、
+        截图或重新压缩，隐藏的数据会丢失。
+      </p>
+    </footer>
+  </main>
+
+  <noscript>
+    <p style="text-align:center;color:#f26d6d">本工具需要在浏览器中启用 JavaScript。</p>
+  </noscript>
+
+  <script src="gkd-core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
