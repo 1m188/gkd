@@ -1,0 +1,45 @@
+name: GitHub Pages
+
+# 推送到 main 分支或手动触发时，把 web/ 目录部署到 GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pages 部署所需的最小权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只保留一次部署，避免并发部署互相覆盖
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+    # 签出
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # 配置 Pages 环境
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
+
+    # 上传 web/ 目录内容，作为站点根目录
+    - name: Upload web directory
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: web
+
+    # 部署到 GitHub Pages
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
